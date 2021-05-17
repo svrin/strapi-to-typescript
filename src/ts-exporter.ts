@@ -15,10 +15,22 @@ interface IStrapiModelExtended extends IStrapiModel {
 const util = {
 
   // InterfaceName
-  defaultToInterfaceName: (name: string) => name ? `I${name.replace(/^./, (str: string) => str.toUpperCase()).replace(/[ ]+./g, (str: string) => str.trimLeft().toUpperCase()).replace(/\//g, '')}` : 'any',
+  defaultToInterfaceName: (name: string) => name ? `${name.replace(/^./, (str: string) => str.toUpperCase()).replace(/[ ]+./g, (str: string) => str.trimLeft().toUpperCase()).replace(/\//g, '')}` : 'unknown',
   overrideToInterfaceName: undefined as IConfigOptions['interfaceName'] | undefined,
   toInterfaceName(name: string, filename: string) {
-    return util.overrideToInterfaceName ? util.overrideToInterfaceName(name, filename) || util.defaultToInterfaceName(name) : this.defaultToInterfaceName(name);
+    const func = util.defaultToInterfaceName;
+
+    if (!name) {
+      return "unknown";
+    }
+
+    if (filename.includes("/components/")) {
+      const [collectionName, _] = filename.split("/").slice(-2)
+
+      return `${func(collectionName)}${func(name)}`
+    }
+
+    return func(name)
   },
 
   // EnumName
@@ -59,7 +71,7 @@ const util = {
         if (enumm) {
           return model.enum ? util.toEnumName(fieldName, interfaceName) : 'string';
         } else {
-          return model.enum ? `"${model.enum.join(`" | "`)}"` : 'string';
+          return model.enum ? `'${model.enum.join(`' | '`)}'` : 'string';
         }
       case 'date':
       case 'datetime':
@@ -69,8 +81,6 @@ const util = {
         return 'Blob';
       case 'json':
         return '{ [key: string]: any }';
-      case 'dynamiczone':
-        return 'any[]'
       case 'decimal':
       case 'float':
       case 'biginteger':
@@ -179,6 +189,12 @@ class Converter {
     result.push(' */');
     result.push(`export interface ${m.interfaceName} {`);
 
+    if (m.modelName.includes(".")) {
+      result.push(`  __component: '${m.modelName}';`);
+    } else {
+      result.push(`  __contentType: '${m.modelName}';`);
+    }
+
     result.push(`  ${this.strapiModelAttributeToProperty(m.interfaceName, 'id', {
       type: 'string',
       required: true
@@ -199,6 +215,19 @@ class Converter {
     result.push('}');
 
     if (this.config.enum) result.push('', ...this.strapiModelAttributeToEnum(m.interfaceName, m.attributes));
+
+    result.push('');
+    if (m.modelName.includes(".")) {
+      result.push(`export function is${m.interfaceName}(obj: { __component?: string }): obj is ${m.interfaceName} {`);
+      result.push(`  return obj.__component === '${m.modelName}';`);
+      result.push(`}`);
+    } else {
+      result.push(`export function is${m.interfaceName}(obj: { __contentType?: string }): obj is ${m.interfaceName} {`);
+      result.push(`  return obj.__contentType === '${m.modelName}';`);
+      result.push(`}`);
+    }
+
+    result.push('');
 
     return result.join('\n');
   };
@@ -273,7 +302,7 @@ class Converter {
     } else if (a.model) {
       propType = findModelName(a.model);
     } else if (a.type === "dynamiczone") {
-      propType = `(${a.components!.map(findModelName).join("|")})`
+      propType = `${a.components!.map(findModelName).join(" | ")}`
     } else if (a.type) {
       propType = util.toPropertyType(interfaceName, name, a, this.config.enum)
     }

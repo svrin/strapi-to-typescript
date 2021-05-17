@@ -106,7 +106,7 @@ export const importFiles = (files: string[], results:IStrapiModel[] = [], merge:
         if (strapiModel.info && strapiModel.info.name) {
           
           let sameNameIndex = results.map(s => s.info.name).indexOf(strapiModel.info.name);
-          if (sameNameIndex === -1) {
+          if (sameNameIndex === -1 || strapiModel._isComponent !== results[sameNameIndex]._isComponent) {
             results.push(strapiModel);
           } else {
             console.warn(`Already have model '${strapiModel.info.name}' => skip ${results[sameNameIndex]._filename} use ${strapiModel._filename}`)
