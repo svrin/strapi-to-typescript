@@ -14,6 +14,8 @@ export interface IStrapiModelAttribute {
   component?: string;
   components?: string[];
   repeatable?: boolean;
+  min?: number;
+  max?: number;
 }
 
 export interface IStrapiModel {

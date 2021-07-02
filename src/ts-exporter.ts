@@ -58,7 +58,7 @@ const util = {
    * @param enumm Use Enum type (or string literal types)
    */
   defaultToPropertyType: (interfaceName: string, fieldName: string, model: IStrapiModelAttribute, enumm: boolean) => {
-    const pt = model.type ? model.type.toLowerCase() : 'any';
+    const pt = model.type ? model.type.toLowerCase() : 'unknown';
     switch (pt) {
       case 'text':
       case 'richtext':
@@ -80,7 +80,7 @@ const util = {
       case 'media':
         return 'Blob';
       case 'json':
-        return '{ [key: string]: any }';
+        return '{ [key: string]: unknown }';
       case 'decimal':
       case 'float':
       case 'biginteger':
@@ -291,7 +291,31 @@ class Converter {
       return result ? result.interfaceName : 'any';
     };
 
-    const required = !a.required && !(!this.config.collectionCanBeUndefined && (a.collection || a.repeatable)) ? '?' : '';
+    const isRequired = () => {
+      if (a.required) {
+        return a.required;
+      }
+
+      if (a.collection && this.config.collectionCanBeUndefined) {
+        return false;
+      } else if (a.collection) {
+        return true;
+      }
+
+      if (a.repeatable && this.config.collectionCanBeUndefined) {
+        return false;
+      } else if (a.repeatable) {
+        return true;
+      }
+
+      if (a.type === "dynamiczone" && a.min && a.min > 0) {
+        return true;
+      }
+
+      return false;
+    }
+
+    const required = isRequired() ? '' : '?';
     const collection = a.collection || a.repeatable ? '[]' : '';
 
     let propType = 'unknown';
@@ -302,7 +326,19 @@ class Converter {
     } else if (a.model) {
       propType = findModelName(a.model);
     } else if (a.type === "dynamiczone") {
-      propType = `${a.components!.map(findModelName).join(" | ")}`
+
+      if (a.max === 1 && a.min === 1) {
+        propType = `[${a.components!.map(findModelName).join(" | ")}]`
+      } else if (a.max === 1 && !a.min) {
+        propType = `[${a.components!.map(findModelName).join(" | ")}]`
+      } else if (a.max === 2 && a.min === 2) {
+        propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
+      } else if (a.max === 3 && a.min === 3) {
+        propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
+      } else {
+        propType = `(${a.components!.map(findModelName).join(" | ")})[]`
+      }
+
     } else if (a.type) {
       propType = util.toPropertyType(interfaceName, name, a, this.config.enum)
     }
