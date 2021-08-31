@@ -59,6 +59,7 @@ const util = {
    */
   defaultToPropertyType: (interfaceName: string, fieldName: string, model: IStrapiModelAttribute, enumm: boolean) => {
     const pt = model.type ? model.type.toLowerCase() : 'unknown';
+
     switch (pt) {
       case 'text':
       case 'richtext':
@@ -89,6 +90,15 @@ const util = {
       case 'string':
       case 'number':
       case 'boolean':
+        return pt;
+    }
+
+    const cpt = model.columnType ? model.columnType.toLowerCase() : 'unknown';
+    switch (cpt) {
+      case 'tinytext':
+      case 'text':
+      case 'longtext':
+        return 'string'
       default:
         return pt;
     }

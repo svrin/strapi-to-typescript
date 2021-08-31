@@ -4,6 +4,7 @@ export interface IStrapiModelAttribute {
   unique?: boolean;
   required?: boolean;
   type?: StrapiType;
+  columnType?: StrapiType;
   default?: string | number | boolean;
   dominant?: boolean;
   collection?: string;
