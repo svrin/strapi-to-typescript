@@ -25,7 +25,7 @@ const util = {
     }
 
     if (filename.includes("/components/")) {
-      const [collectionName, _] = filename.split("/").slice(-2)
+      const [collectionName] = filename.split("/").slice(-2)
 
       return `${func(collectionName)}${func(name)}`
     }
@@ -345,6 +345,10 @@ class Converter {
         propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
       } else if (a.max === 3 && a.min === 3) {
         propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
+      } else if (a.components?.length === 1) {
+        propType = `${a.components.map(findModelName)[0]}[]`
+      } else if (a.components!.length >= 6) {
+        propType = `(\n    | ${a.components!.map(findModelName).join("\n    | ")}\n  )[]`
       } else {
         propType = `(${a.components!.map(findModelName).join(" | ")})[]`
       }
