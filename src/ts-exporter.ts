@@ -345,6 +345,8 @@ class Converter {
         propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
       } else if (a.max === 3 && a.min === 3) {
         propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
+      } else if (a.components!.length === 0) {
+        propType = `[]`
       } else if (a.components!.length === 1) {
         propType = `${a.components!.map(findModelName)[0]}[]`
       } else if (a.components!.length >= 6) {
