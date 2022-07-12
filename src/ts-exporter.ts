@@ -10,12 +10,14 @@ interface IStrapiModelExtended extends IStrapiModel {
   interfaceName: string;
   // model name extract from *.settings.json filename. Use to link model.
   modelName: string;
+  // api name
+  apiName: string;
 }
 
 const util = {
 
   // InterfaceName
-  defaultToInterfaceName: (name: string) => name ? `${name.replace(/^./, (str: string) => str.toUpperCase()).replace(/[ ]+./g, (str: string) => str.trimLeft().toUpperCase()).replace(/\//g, '')}` : 'unknown',
+  defaultToInterfaceName: (name: string) => name ? `${name.replace(/^./, (str: string) => str.toUpperCase()).replace(/[\.-]/g, ' ').replace(/[ ]+./g, (str: string) => str.trimLeft().toUpperCase()).replace(/\//g, '')}` : 'unknown',
   overrideToInterfaceName: undefined as IConfigOptions['interfaceName'] | undefined,
   toInterfaceName(name: string, filename: string) {
     const func = util.defaultToInterfaceName;
@@ -122,7 +124,7 @@ const util = {
 }
 
 const findModel = (structure: IStrapiModelExtended[], name: string): IStrapiModelExtended | undefined => {
-  return structure.filter((s) => s.modelName === name.toLowerCase()).shift();
+  return structure.filter((s) => s.modelName === name.toLowerCase() || s.apiName === name.toLowerCase()).shift();
 };
 
 class Converter {
@@ -146,15 +148,20 @@ class Converter {
     if (config.outputFileName && typeof config.outputFileName === 'function') util.overrideOutputFileName = config.outputFileName;
 
     this.strapiModels = strapiModelsParse.map((m): IStrapiModelExtended => {
-
+      const dirnameParts = path.dirname(m._filename).split(path.sep).reverse()
       const modelName = m._isComponent ?
-        path.dirname(m._filename).split(path.sep).pop() + '.' + path.basename(m._filename, '.json')
-        : path.basename(m._filename, '.settings.json');
+        dirnameParts[0] + '.' + path.basename(m._filename, '.json')
+        : dirnameParts[0];
+      const apiName = m._isComponent ?
+        dirnameParts[0] + '.' + path.basename(m._filename, '.json')
+        : dirnameParts[3] + "::" + dirnameParts[2] + "." + dirnameParts[0];
       const interfaceName = util.toInterfaceName(m.info.name, m._filename);
       const ouputFile = util.toOutputFileName(modelName, m._isComponent, config.nested, interfaceName, m._filename)
+
       return {
         ...m,
         interfaceName,
+        apiName: apiName.toLowerCase(),
         modelName: modelName.toLowerCase(),
         ouputFile
       }
@@ -269,8 +276,9 @@ class Converter {
 
       const a = m.attributes[aName];
       if ((a.collection || a.model || a.component || '').toLowerCase() === m.modelName) continue;
+      if ((a.target || '').toLowerCase() === m.apiName) continue;
 
-      const proposedImport = toImportDefinition(a.collection || a.model || a.component || '')
+      const proposedImport = toImportDefinition(a.collection || a.model || a.component || a.target || '')
       if (proposedImport) imports.push(proposedImport);
 
       imports.push(...(a.components || [])
@@ -298,7 +306,7 @@ class Converter {
     a: IStrapiModelAttribute
   ) {
     const findModelName = (n: string) => {
-      const result = findModel(this.strapiModels, n);
+      let result = findModel(this.strapiModels, n);
       if (!result && n !== '*') console.debug(`type '${n}' unknown on ${interfaceName}[${name}] => fallback to 'any'. Add in the input arguments the folder that contains *.settings.json with info.name === '${n}'`)
       return result ? result.interfaceName : 'any';
     };
@@ -333,6 +341,8 @@ class Converter {
     let propType = 'unknown';
     if (a.collection) {
       propType = findModelName(a.collection);
+    } else if (a.type === 'relation' && a.target) {
+      propType = findModelName(a.target);
     } else if (a.component) {
       propType = findModelName(a.component);
     } else if (a.model) {

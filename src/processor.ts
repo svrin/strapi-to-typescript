@@ -12,7 +12,7 @@ export const exec = async (options: IConfigOptions) => {
 
     if (options.inputGroup) console.log("option '--inputGroup' is deprecated use '--components'.");
     if (options.components || options.inputGroup )
-      strapiModels = await importFiles(await findFiles(options.components || options.inputGroup, /.json/), strapiModels, { _isComponent: true });
+      strapiModels = await importFiles(await findFiles(options.components || options.inputGroup, /.json$/), strapiModels, { _isComponent: true });
 
     // build and write .ts
     const count = await convert(strapiModels, options);

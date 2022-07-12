@@ -1,4 +1,4 @@
-export type StrapiType = 'string' | 'number' | 'boolean' | 'text' | 'date' | 'email' | 'component' | 'enumeration' | 'dynamiczone';
+export type StrapiType = 'string' | 'number' | 'boolean' | 'text' | 'date' | 'email' | 'component' | 'enumeration' | 'dynamiczone' | 'relation';
 
 export interface IStrapiModelAttribute {
   unique?: boolean;
@@ -17,6 +17,8 @@ export interface IStrapiModelAttribute {
   repeatable?: boolean;
   min?: number;
   max?: number;
+  relation?: 'manyToOne' | 'oneToOne' | 'oneToMany'
+  target?: string;
 }
 
 export interface IStrapiModel {
