@@ -6,6 +6,13 @@
 <span><a href="https://github.com/erikvullings/strapi-to-typescript/" title="View this project on Github"><img src="https://img.shields.io/github/contributors/erikvullings/strapi-to-typescript" alt="contributors" /></a></span>
 
 
+
+THIS PROJECT IS NOT MAINTAINED ANYMORE. Don't hesitate to fork it.  
+
+THIS PROJECT DOESN'T SUPPORT VERSION 4 OR LATER OF STRAPI. (see [PR#49](https://github.com/erikvullings/strapi-to-typescript/issues/49))  
+
+## 
+
 Convert the Strapi models to TypeScript interfaces by processing each of the `./api/**/models/*.settings.json` recursively.
 
 ## Install and Run
@@ -31,9 +38,10 @@ sts -c .stsconfig.js
 Strapi folder(s)/file(s) with models *.settings.json  
 You may define multiple inputs. In case your API models have relations to other plugins like 'users-permissions'.
 `sts path/to/strapi/api/ path/to/strapi/plugins/users-permissions/models -o path/to/your/types/dir/`  
-Order matters, if you have two models with the same name, the last one is used.
+  * Order matters, if you have two models with the same name, the last one is used.  
+  * Add '!' to exclude folder or subfolder, ex: `!path/to/strapi/plugins_excluded`.
 
-* **-g components **  
+* **-g components**  
 Strapi folder(s) with components models
 
 ### optional
@@ -96,7 +104,7 @@ const config = {
     interfaceName: (name) => `X${name}`,
     enumName: (name, interfaceName) => `Enum${interfaceName}${name}`,
     importAsType: (interfaceName) => interfaceName === 'MyInterfaceThatWantsToImportAsTypes' /* or just true */,
-    outputFileName: (interfaceName, filename) => interfaceName;
+    outputFileName: (interfaceName, filename) => interfaceName
 }
 module.exports = config;
 ```
@@ -140,7 +148,3 @@ The input folder is recursively processed and each model file is read. When done
 npm install && npm run build
 # output files generated in dist folder
 ```
-
-
-console warn deprecated
-template handlebrake/...
