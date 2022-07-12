@@ -210,9 +210,11 @@ class Converter {
       required: true
     })}`);
 
-    if (m.attributes) for (const aName in m.attributes) {
-      if ((util.excludeField && util.excludeField(m.interfaceName, aName)) || !m.attributes.hasOwnProperty(aName)) continue;
-      result.push(`  ${this.strapiModelAttributeToProperty(m.interfaceName, aName, m.attributes[aName])}`);
+    if (m.attributes) {
+      for (const aName in m.attributes) {
+        if ((util.excludeField && util.excludeField(m.interfaceName, aName)) || !m.attributes.hasOwnProperty(aName)) continue;
+        result.push(`  ${this.strapiModelAttributeToProperty(m.interfaceName, aName, m.attributes[aName])}`);
+      }
     }
 
     if (util.addField) {
@@ -349,7 +351,7 @@ class Converter {
         propType = `[]`
       } else if (a.components!.length === 1) {
         propType = `${a.components!.map(findModelName)[0]}[]`
-      } else if (a.components!.length >= 6) {
+      } else if (a.components!.length >= 6 || a.components!.map(findModelName).join("").length > 80) {
         propType = `(\n    | ${a.components!.map(findModelName).join("\n    | ")}\n  )[]`
       } else {
         propType = `(${a.components!.map(findModelName).join(" | ")})[]`
