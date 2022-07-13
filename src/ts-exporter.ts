@@ -17,7 +17,7 @@ interface IStrapiModelExtended extends IStrapiModel {
 const util = {
 
   // InterfaceName
-  defaultToInterfaceName: (name: string) => name ? `${name.replace(/^./, (str: string) => str.toUpperCase()).replace(/[\.-]/g, ' ').replace(/[ ]+./g, (str: string) => str.trimLeft().toUpperCase()).replace(/\//g, '')}` : 'unknown',
+  defaultToInterfaceName: (name: string) => name ? `${name.replace(/^./, (str: string) => str.toUpperCase()).replace(/[\.\-\_]/g, ' ').replace(/[ ]+./g, (str: string) => str.trimLeft().toUpperCase()).replace(/\//g, '')}` : 'unknown',
   overrideToInterfaceName: undefined as IConfigOptions['interfaceName'] | undefined,
   toInterfaceName(name: string, filename: string) {
     const func = util.defaultToInterfaceName;
@@ -81,7 +81,7 @@ const util = {
       case 'timestamp':
         return 'Date';
       case 'media':
-        return 'Blob';
+        return 'File';
       case 'json':
         return '{ [key: string]: unknown }';
       case 'decimal':
@@ -278,7 +278,7 @@ class Converter {
       if ((a.collection || a.model || a.component || '').toLowerCase() === m.modelName) continue;
       if ((a.target || '').toLowerCase() === m.apiName) continue;
 
-      const proposedImport = toImportDefinition(a.collection || a.model || a.component || a.target || '')
+      const proposedImport = toImportDefinition(a.collection || a.model || a.component || a.target || ((a.type === "media") && 'File') || '')
       if (proposedImport) imports.push(proposedImport);
 
       imports.push(...(a.components || [])
@@ -336,13 +336,19 @@ class Converter {
     }
 
     const required = isRequired() ? '' : '?';
-    const collection = a.collection || a.repeatable ? '[]' : '';
+    let collection = a.collection || a.repeatable ? '[]' : '';
 
     let propType = 'unknown';
     if (a.collection) {
       propType = findModelName(a.collection);
+    } else if (a.type === 'relation' && a.target && a.relation === 'oneToMany') {
+      collection = '[]';
+      propType = findModelName(a.target);
     } else if (a.type === 'relation' && a.target) {
       propType = findModelName(a.target);
+    } else if (a.type === 'relation' && a.relation === 'morphToMany') {
+      collection = '[]';
+      propType = 'unknown'
     } else if (a.component) {
       propType = findModelName(a.component);
     } else if (a.model) {

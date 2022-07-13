@@ -54,7 +54,7 @@ const walk = (
   });
 };
 
-export const findFiles = (dir: string, ext: RegExp = /.json$/, exclude: string[] = []) =>
+export const findFiles = (dir: string, ext: RegExp = /(.json|schema.js)$/, exclude: string[] = []) =>
   new Promise<string[]>((resolve, reject) => {
     walk(
       dir,
@@ -78,7 +78,7 @@ export async function findFilesFromMultipleDirectories(...files: string[]): Prom
   const exclude = files.filter(f => f.startsWith("!")).map(f => f.replace(/^!/, ''))
   const inputs = [... new Set(files.filter(f => !f.startsWith("!")))]
 
-  var actions = inputs.map(i => fs.statSync(i).isFile() ? [i] : findFiles(i, /.json$/, exclude)); // run the function over all items
+  var actions = inputs.map(i => fs.statSync(i).isFile() ? [i] : findFiles(i, /(.json|schema.js)$/, exclude)); // run the function over all items
 
   // we now have a promises array and we want to wait for it
 
@@ -102,7 +102,17 @@ export const importFiles = (files: string[], results: IStrapiModel[] = [], merge
 
         pending--;
 
-        let strapiModel = Object.assign(JSON.parse(data), { _filename: f, ...merge })
+        let strapiModel = null
+        if (f.endsWith(".json")) {
+          strapiModel = Object.assign(JSON.parse(data), {_filename: f, ...merge})
+        }
+        if (f.endsWith(".js")) {
+          strapiModel = Object.assign(require(f), { _filename: f, ...merge })
+        }
+        if (!strapiModel) {
+          console.warn(`Could not import file`, f);
+          return
+        }
 
         if(strapiModel.info && !strapiModel.info.name && strapiModel.info.displayName)
           strapiModel.info.name = strapiModel.info.displayName;
