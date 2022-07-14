@@ -288,7 +288,7 @@ class Converter {
 
     return imports
       .filter((value, index, arr) => arr.indexOf(value) === index) // is unique
-      .sort()
+      .sort((a, b) => a.split("from")[1] < b.split("from")[1] ? -1 : 1)
   };
 
   /**
