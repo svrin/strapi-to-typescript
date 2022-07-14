@@ -15,6 +15,7 @@ export interface IStrapiModelAttribute {
   component?: string;
   components?: string[];
   repeatable?: boolean;
+  multiple?: boolean;
   min?: number;
   max?: number;
   relation?: 'manyToOne' | 'oneToOne' | 'oneToMany' | 'morphToMany'

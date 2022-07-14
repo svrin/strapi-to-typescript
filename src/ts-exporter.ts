@@ -326,6 +326,10 @@ class Converter {
         return false;
       } else if (a.repeatable) {
         return true;
+      } else if (a.multiple && this.config.collectionCanBeUndefined) {
+        return false;
+      } else if (a.multiple) {
+        return true;
       }
 
       if (a.type === "dynamiczone" && a.min && a.min > 0) {
@@ -336,7 +340,7 @@ class Converter {
     }
 
     const required = isRequired() ? '' : '?';
-    let collection = a.collection || a.repeatable ? '[]' : '';
+    let collection = a.collection || a.repeatable || a.multiple ? '[]' : '';
 
     let propType = 'unknown';
     if (a.collection) {
