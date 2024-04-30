@@ -114,21 +114,11 @@ export const importFiles = (files: string[], results: IStrapiModel[] = [], merge
           return
         }
 
-        if(strapiModel.info && !strapiModel.info.name && strapiModel.info.displayName)
+        if(strapiModel.info && !strapiModel.info.name && strapiModel.info.displayName) {
           strapiModel.info.name = strapiModel.info.displayName;
-        
-        if (strapiModel.info && strapiModel.info.name) {
-
-          let sameNameIndex = results.map(s => s.info.name).indexOf(strapiModel.info.name);
-          if (sameNameIndex === -1 || strapiModel._isComponent !== results[sameNameIndex]._isComponent) {
-            results.push(strapiModel);
-          } else {
-            console.warn(`Already have model '${strapiModel.info.name}' => skip ${results[sameNameIndex]._filename} use ${strapiModel._filename}`)
-            results[sameNameIndex] = strapiModel;
-          }
-        } else {
-          results.push(strapiModel);
         }
+
+        results.push(strapiModel);
 
         if (pending === 0) {
           resolve(results);
