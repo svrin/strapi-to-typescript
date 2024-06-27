@@ -1,56 +1,46 @@
-import * as npmPackage from '../package.json';
+const npmPackage = require('../package.json');
 import commandLineUsage from 'command-line-usage';
 import commandLineArgs from 'command-line-args';
-import { OptionDefinition } from 'command-line-args';
 import { exec } from './processor';
+import { ICommandOptions, IConfigOptions } from '..';
+import { resolve } from 'path'
 
-const log = console.log;
 
-export interface ICommandOptions {
-  /** Strapi folder(s) with models */
-  input: string[];
-  /** Strapi folder(s) with groups models */
-  inputGroup: string;
-  /** Output folder */
-  output: string;
-  /** Put all interfaces in a nested tree instead of directly under the output folder */
-  nested: boolean;
-  /** Generate enumeration */
-  enum: boolean;
-  /** Display help output */
-  help: boolean;
-}
-
-interface IOptionDefinition extends OptionDefinition {
-  typeLabel: string;
-  description: string;
+function examplePath() {
+  const pathToEx = `${__dirname}/.stsconfig.js`
+  if (pathToEx.startsWith(process.cwd())) return pathToEx.replace(process.cwd(), '.')
+  return pathToEx;
 }
 
 export class CommandLineInterface {
-  public static optionDefinitions: IOptionDefinition[] = [
+  public static optionDefinitions: commandLineUsage.OptionDefinition[] = [
     {
       name: 'help',
       alias: 'h',
       type: Boolean,
-      typeLabel: '{underline Boolean}',
       description: 'Show help text.',
     },
     {
       name: 'input',
       alias: 'i',
       type: String,
-      multiple:true,
+      multiple: true,
       typeLabel: '{underline String}',
       defaultOption: true,
-      description: 'Input folder with the Strapi models (api folder).',
+      description: 'Input folder with the Strapi models (*.settings.json)',
     },
     {
-      name: 'inputGroup',
+      name: 'components',
       alias: 'g',
       type: String,
       typeLabel: '{underline String}',
-      defaultValue: undefined,
-      description: 'Input folder with the Strapi models (groups folder).',
+      description: 'Input folder with the Strapi components (*.json)'
+    },
+    {
+      name: 'inputGroup',
+      type: String,
+      typeLabel: '{underline String}',
+      description: 'Deprecated. use: -g --components'
     },
     {
       name: 'output',
@@ -58,23 +48,35 @@ export class CommandLineInterface {
       type: String,
       typeLabel: '{underline String}',
       defaultValue: '.',
-      description: 'Output folder with the TypeScript models.',
+      description: 'Output folder with the TypeScript models. (default: current directory)',
+    },
+    {
+      name: 'config',
+      alias: 'c',
+      type: String,
+      typeLabel: '{underline String}',
+      description: 'Advanced configuration file',
     },
     {
       name: 'nested',
       alias: 'n',
       type: Boolean,
-      typeLabel: '{underline Boolean}',
       defaultValue: false,
-      description: 'If true, add each interface in its own folder.',
+      description: 'add each interface in its own folder.',
     },
     {
       name: 'enum',
       alias: 'e',
       type: Boolean,
-      typeLabel: '{underline Boolean}',
       defaultValue: false,
-      description: 'If true, Enumeration is generate, else string literal types is used',
+      description: 'Enumeration is generate, else string literal types is used',
+    },
+    {
+      name: 'collectionCanBeUndefined',
+      alias: 'u',
+      type: Boolean,
+      defaultValue: false,
+      description: 'collection can be undefined/optional',
     },
   ];
 
@@ -83,7 +85,10 @@ export class CommandLineInterface {
       header: `${npmPackage.name.toUpperCase()}, v${npmPackage.version}`,
       content: `${npmPackage.license} license.
 
-    ${npmPackage.description}`,
+    ${npmPackage.description}
+
+    Usage: sts ([OPTION]...) [INPUT FOLDER]...
+    `,
     },
     {
       header: 'Options',
@@ -94,32 +99,61 @@ export class CommandLineInterface {
       content: [
         {
           desc: '01. Convert the Strapi API folder and write the results to current folder.',
-          example: '$ sts [PATH\\TO\\API]',
+          example: '$ sts ./api',
         },
         {
           desc: '02. Convert the Strapi API folder and write the results to output folder.',
-          example: '$ sts [PATH\\TO\\API] -o [PATH\\TO\\OUTPUT]',
+          example: '$ sts ./api -o ./sts',
         },
         {
-          desc: '03. Add each interface to its own folder.',
-          example: '$ sts [PATH\\TO\\API] -o [PATH\\TO\\OUTPUT] -n',
+          desc: '03. Convert the Strapi API folder with components and write the results to output folder.',
+          example: '$ sts ./api -g ./components -o ./sts',
         },
         {
-          desc: '04. Define multiple input folders.',
-          example: '$ sts [PATH\\TO\\API] [PATH\\TO\\Plugin] [PATH\\TO\\Another_Plugin]',
+          desc: '04. Add each interface to its own folder.',
+          example: '$ sts ./api -o ./sts -n',
         },
+        {
+          desc: '05. Define multiple input folders.',
+          example: '$ sts ./api ./node_modules/strapi-plugin-users-permissions/models/ ./node_modules/strapi-plugin-upload/models/',
+        },
+        {
+          desc: `06. Use advanced configuration. See example: ${examplePath()}`,
+          example: '$ sts -c ./stsconfig.js',
+        }
       ],
     },
   ];
 }
 
+
 const options = commandLineArgs(CommandLineInterface.optionDefinitions) as ICommandOptions;
 
-if (options.help || !options.input) {
-  const usage = commandLineUsage(CommandLineInterface.sections);
+const usage = commandLineUsage(CommandLineInterface.sections);
+
+const log = console.log;
+const warn = (...x: any[]) => {
+  log(usage);
+  console.warn('\x1b[31m%s\x1b[0m', ...x);
+  process.exit(1);
+}
+
+if (options.help) {
   log(usage);
   process.exit(0);
 } else {
-  // Do your thing
-  exec(options);
+
+  // if arg config file, merge command line options with config file options
+  const mergedOptions: IConfigOptions = (options.config) ? {
+    ...options,
+    ...require(resolve(process.cwd(), options.config))
+  } : options;
+
+  if (!mergedOptions.input) {
+    warn('need input folder');
+  } else if ('inputGroup' in mergedOptions && !mergedOptions.inputGroup) {
+    warn('option -g need argument');
+  } else {
+    exec(mergedOptions);
+  }
 }

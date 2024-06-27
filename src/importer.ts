@@ -54,9 +54,8 @@ const walk = (
   });
 };
 
-export const findFiles = (dir: string, ext: RegExp = /.settings.json$/ ) =>
+export const findFiles = (dir: string, ext: RegExp = /(.json|schema.js)$/, exclude: string[] = []) =>
   new Promise<string[]>((resolve, reject) => {
-    const filter = (f: string) => ext.test(f);
     walk(
       dir,
       (err, files) => {
@@ -66,7 +65,7 @@ export const findFiles = (dir: string, ext: RegExp = /.settings.json$/ ) =>
           resolve(files);
         }
       },
-      filter
+      (f: string) => ext.test(f) && !exclude.map(f => path.resolve(f)).find(x => f.startsWith(x))
     );
   });
 
@@ -75,11 +74,11 @@ export const findFiles = (dir: string, ext: RegExp = /.settings.json$/ ) =>
  * Wrapper around "findFiles".
  * 
  */
-export
-  async function findFilesFromMultipleDirectories(...files:string[]): Promise<string[]> {
-  const inputs = [... new Set(files)]
+export async function findFilesFromMultipleDirectories(...files: string[]): Promise<string[]> {
+  const exclude = files.filter(f => f.startsWith("!")).map(f => f.replace(/^!/, ''))
+  const inputs = [... new Set(files.filter(f => !f.startsWith("!")))]
 
-  var actions = inputs.map(i => findFiles(i)); // run the function over all items
+  var actions = inputs.map(i => fs.statSync(i).isFile() ? [i] : findFiles(i, /(.json|schema.js)$/, exclude)); // run the function over all items
 
   // we now have a promises array and we want to wait for it
 
@@ -89,26 +88,43 @@ export
   return (new Array<string>()).concat.apply([], results)
 }
 
-
-
-
 /*
  */
-
-export const importFiles = (files: string[]) =>
+export const importFiles = (files: string[], results: IStrapiModel[] = [], merge: Partial<IStrapiModel> = {}) =>
   new Promise<IStrapiModel[]>((resolve, reject) => {
+
     let pending = files.length;
-    const results: IStrapiModel[] = [];
-    files.forEach((f) =>
-      fs.readFile(f, { encoding: 'utf8' }, (err, data) => {
-        if (err) {
-          reject(err);
-        }
+    if (files.length === 0) resolve(results);
+    files.forEach(f => {
+
+      try {
+        const data = fs.readFileSync(f, { encoding: 'utf8' });
+
         pending--;
-        results.push(Object.assign(JSON.parse(data), { _filename: f }));
+
+        let strapiModel = null
+        if (f.endsWith(".json")) {
+          strapiModel = Object.assign(JSON.parse(data), {_filename: f, ...merge})
+        }
+        if (f.endsWith(".js")) {
+          strapiModel = Object.assign(require(f), { _filename: f, ...merge })
+        }
+        if (!strapiModel) {
+          console.warn(`Could not import file`, f);
+          return
+        }
+
+        if(strapiModel.info && !strapiModel.info.name && strapiModel.info.displayName) {
+          strapiModel.info.name = strapiModel.info.displayName;
+        }
+
+        results.push(strapiModel);
+
         if (pending === 0) {
           resolve(results);
         }
-      })
-    );
+      } catch (err) {
+        reject(err);
+      }
+    })
   });

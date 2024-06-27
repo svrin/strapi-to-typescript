@@ -1,262 +1,415 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { IStrapiModel, IStrapiModelAttribute } from './models/strapi-model';
+import { IConfigOptions } from '..';
 
-interface IStructure {
-  name: string;
-  folder: string;
-  snakeName: string;
-  m: IStrapiModel;
-  nested: boolean;
+interface IStrapiModelExtended extends IStrapiModel {
+  // use to output filename
+  ouputFile: string;
+  // interface name
+  interfaceName: string;
+  // model name extract from *.settings.json filename. Use to link model.
+  modelName: string;
+  // api name
+  apiName: string;
 }
 
-/**
- * Convert a camelCase name to a TypeScript interface name, e.g.
- * camelCase => ICamelCase.
- *
- * @param name camelCase name
- */
-const toInterfaceName = (name: string) => name ? `I${name.replace(/^./, (str: string) => str.toUpperCase())}` : 'any';
+const util = {
 
-/**
- * Convert a name to a Pascal case name
- * pascalCase => PascalCase.
- *
- * @param name name
- */
-const toPascalCase = (name: string) => name ? `${name.replace(/^./, (str: string) => str.toUpperCase())}` : 'any';
+  // InterfaceName
+  defaultToInterfaceName: (name: string) => name ? `${name.replace(/^./, (str: string) => str.toUpperCase()).replace(/[\.\-\_]/g, ' ').replace(/[ ]+./g, (str: string) => str.trimLeft().toUpperCase()).replace(/\//g, '')}` : 'unknown',
+  overrideToInterfaceName: undefined as IConfigOptions['interfaceName'] | undefined,
+  toInterfaceName(name: string, filename: string) {
+    const func = util.defaultToInterfaceName;
 
+    if (!name) {
+      return "unknown";
+    }
 
-/**
- * Convert name to snake name, e.g. camelCase => camel-case
- *
- * @param name input name
- */
-export const toSnakeName = (name: string) =>
-  name
-    .split(/(?=[A-Z])/)
-    .join('-')
-    .toLowerCase();
+    if (filename.includes("/components/")) {
+      const [collectionName] = filename.split("/").slice(-2)
 
-/**
- * Convert a Strapi type to a TypeScript type.
- *
- * @param interfaceName name of current interface
- * @param fieldName name of the field
- * @param model Strapi type
- * @param enumm Use Enum type (or string literal types)
- */
-const toPropertyType = (interfaceName: string, fieldName: string, model: IStrapiModelAttribute, enumm: boolean) => {
-  const pt = model.type ? model.type.toLowerCase() : "any";
-  switch (pt) {
-    case 'text':
-    case 'email':
-    case 'password':
-      return 'string';
-    case 'enumeration':
-      if(enumm){
-        return model.enum ? `${interfaceName}${toPascalCase(fieldName)}` : "string";
-      } else {
-        return model.enum ? `"${model.enum.join(`" | "`)}"` : "string";
-      }
-    case 'date':
-      return 'Date';
-    case 'media':
-      return 'Blob';
-    case 'json':
-      return '{ [key: string]: any }';
-    case 'decimal':
-    case 'float':
-    case 'biginteger':
-    case 'integer':
+      return `${func(collectionName)}${func(name)}`
+    }
+
+    return func(name)
+  },
+
+  // EnumName
+  defaultToEnumName: (name: string, interfaceName: string) => name ? `${interfaceName}${name.replace(/^./, (str: string) => str.toUpperCase())}` : 'any',
+  overrideToEnumName: undefined as IConfigOptions['enumName'] | undefined,
+  toEnumName(name: string, interfaceName: string) {
+    return this.overrideToEnumName ? this.overrideToEnumName(name, interfaceName) || this.defaultToEnumName(name, interfaceName) : this.defaultToEnumName(name, interfaceName);
+  },
+
+  // OutputFileName
+  defaultOutputFileName: (modelName: string, isComponent?: boolean, configNested?: boolean) => isComponent ?
+    modelName.replace('.', path.sep) :
+    configNested ? modelName.toLowerCase() + path.sep + modelName.toLowerCase() : modelName.toLowerCase(),
+  overrideOutputFileName: undefined as IConfigOptions['outputFileName'] | undefined,
+  toOutputFileName(modelName: string, isComponent: boolean | undefined, configNested: boolean | undefined, interfaceName: string, filename: string) {
+    return this.overrideOutputFileName ? this.overrideOutputFileName(interfaceName, filename) || this.defaultOutputFileName(modelName, isComponent, configNested) : this.defaultOutputFileName(modelName, isComponent, configNested);
+  },
+
+  /**
+   * Convert a Strapi type to a TypeScript type.
+   *
+   * @param interfaceName name of current interface
+   * @param fieldName name of the field
+   * @param model Strapi type
+   * @param enumm Use Enum type (or string literal types)
+   */
+  defaultToPropertyType: (interfaceName: string, fieldName: string, model: IStrapiModelAttribute, enumm: boolean) => {
+    const pt = model.type ? model.type.toLowerCase() : 'unknown';
+
+    switch (pt) {
+      case 'text':
+      case 'richtext':
+      case 'email':
+      case 'password':
+      case 'uid':
+      case 'time':
+        return 'string';
+      case 'enumeration':
+        if (enumm) {
+          return model.enum ? util.toEnumName(fieldName, interfaceName) : 'string';
+        } else {
+          return model.enum ? `'${model.enum.join(`' | '`)}'` : 'string';
+        }
+      case 'date':
+      case 'datetime':
+      case 'timestamp':
+        return 'Date';
+      case 'media':
+        return 'File';
+      case 'json':
+        return '{ [key: string]: unknown }';
+      case 'decimal':
+      case 'float':
+      case 'biginteger':
+      case 'integer':
         return 'number';
-    case 'string':
-    case 'number':
-    case 'boolean':
-    default:
-      return pt;
-  }
-};
-
-/**
- * Transform a Strapi Attribute of group.
- *
- * @param attr IStrapiModelAttribute
- */
-const componentCompatible = (attr: IStrapiModelAttribute) => {
-  return (attr.type === 'component')
-    ? attr.repeatable ? { collection: attr.component!.split('.')[1] } : { model: attr.component!.split('.')[1] }
-    : attr;
-}
-/**
- * Convert a Strapi Attribute to a TypeScript property.
- *
- * @param interfaceName name of current interface
- * @param name Name of the property
- * @param a Attributes of the property
- * @param structure Overall output structure
- * @param enumm Use Enum type (or string literal types)
- */
-const strapiModelAttributeToProperty = (
-  interfaceName: string,
-  name: string,
-  a: IStrapiModelAttribute,
-  structure: Array<{
-    name: string;
-    folder: string;
-    snakeName: string;
-    m: IStrapiModel;
-  }>,
-  enumm: boolean
-) => {
-  const findModelName = (n: string) => {
-    const result = structure.filter((s) => s.name.toLowerCase() === n).shift();
-    return result ? result.name : '';
-  };
-  const required = !a.required && !(a.collection || a.repeatable)  ? '?' : '';
-  a = componentCompatible(a);
-  const collection = a.collection ? '[]' : '';
-
-  const propType = a.collection
-    ? toInterfaceName(findModelName(a.collection))
-    : a.model
-      ? a.model === 'file'
-        ? 'Blob'
-        : toInterfaceName(findModelName(a.model))
-      : a.type
-        ? toPropertyType(interfaceName, name, a, enumm)
-        : 'unknown';
-  return `${name}${required}: ${propType}${collection};`;
-};
-
-/**
- * Convert all Strapi Enum to TypeScript Enumeration.
- *
- * @param interfaceName name of current interface
- * @param a Attributes
- */
-const strapiModelAttributeToEnum = (interfaceName: string, attributes: { [attr: string]: IStrapiModelAttribute }): string[] => {
-  const enums: string[] = []
-  for (const aName in attributes) {
-    if (!attributes.hasOwnProperty(aName)) {
-      continue;
+      case 'string':
+      case 'number':
+      case 'boolean':
+        return pt;
     }
-    if(attributes[aName].type === 'enumeration'){
-      enums.push(`export enum ${interfaceName}${toPascalCase(aName)} {`);
-      attributes[aName].enum!.forEach( e => {
-        enums.push(`  ${e} = "${e}",`); 
-      })
-      enums.push(`}\n`);
-    }
-  }
 
-  return enums
+    const cpt = model.columnType ? model.columnType.toLowerCase() : 'unknown';
+    switch (cpt) {
+      case 'tinytext':
+      case 'text':
+      case 'longtext':
+        return 'string'
+      default:
+        return pt;
+    }
+  },
+  overrideToPropertyType: undefined as IConfigOptions['fieldType'] | undefined,
+  toPropertyType(interfaceName: string, fieldName: string, model: IStrapiModelAttribute, enumm: boolean) {
+    return this.overrideToPropertyType ? this.overrideToPropertyType(`${model.type}`, fieldName, interfaceName) || this.defaultToPropertyType(interfaceName, fieldName, model, enumm) : this.defaultToPropertyType(interfaceName, fieldName, model, enumm);
+  },
+
+  // PropertyName
+  defaultToPropertyName: (fieldName: string) => fieldName,
+  overrideToPropertyName: undefined as IConfigOptions['fieldName'] | undefined,
+  toPropertyName(fieldName: string, interfaceName: string) {
+    return this.overrideToPropertyName ? this.overrideToPropertyName(fieldName, interfaceName) || this.defaultToPropertyName(fieldName) : this.defaultToPropertyName(fieldName);
+  },
+
+
+  excludeField: undefined as IConfigOptions['excludeField'] | undefined,
+
+  addField: undefined as IConfigOptions['addField'] | undefined,
 }
 
-/**
- * Find all required models and import them.
- *
- * @param m Strapi model to examine
- * @param structure Overall output structure
- */
-const strapiModelExtractImports = (m: IStrapiModel, structure: IStructure[]) => {
-  const isUnique = <T>(value: T, index: number, arr: T[]) => arr.indexOf(value) === index;
-  const toImportDefinition = (name: string) => {
-    const found = structure.filter((s) => s.name.toLowerCase() === name).shift();
-    const toFolder = (f: IStructure) => (f.nested ? `../${f.snakeName}/${f.snakeName}` : `./${f.snakeName}`);
-    return found ? `import { ${toInterfaceName(found.name)} } from '${toFolder(found)}';` : '';
+const findModel = (structure: IStrapiModelExtended[], name: string): IStrapiModelExtended | undefined => {
+  return structure.filter((s) => s.modelName === name.toLowerCase() || s.apiName === name.toLowerCase()).shift();
+};
+
+class Converter {
+
+  strapiModels: IStrapiModelExtended[] = [];
+
+  constructor(strapiModelsParse: IStrapiModel[], private config: IConfigOptions) {
+
+    if (!fs.existsSync(config.output)) fs.mkdirSync(config.output);
+
+    if (config.enumName && typeof config.enumName === 'function') util.overrideToEnumName = config.enumName;
+    if (config.interfaceName && typeof config.interfaceName === 'function') util.overrideToInterfaceName = config.interfaceName;
+    if (config.fieldType && typeof config.fieldType === 'function') util.overrideToPropertyType = config.fieldType;
+    else if (config.type && typeof config.type === 'function') {
+      console.warn("option 'type' is depreated. use 'fieldType'");
+      util.overrideToPropertyType = config.type;
+    }
+    if (config.excludeField && typeof config.excludeField === 'function') util.excludeField = config.excludeField;
+    if (config.addField && typeof config.addField === 'function') util.addField = config.addField;
+    if (config.fieldName && typeof config.fieldName === 'function') util.overrideToPropertyName = config.fieldName;
+    if (config.outputFileName && typeof config.outputFileName === 'function') util.overrideOutputFileName = config.outputFileName;
+
+    this.strapiModels = strapiModelsParse.map((m): IStrapiModelExtended => {
+      const dirnameParts = path.dirname(m._filename).split(path.sep).reverse()
+      const modelName = m._isComponent ?
+        dirnameParts[0] + '.' + path.basename(m._filename, '.json')
+        : dirnameParts[0];
+      const apiName = m._isComponent ?
+        dirnameParts[0] + '.' + path.basename(m._filename, '.json')
+        : dirnameParts[3] + "::" + dirnameParts[2] + "." + dirnameParts[0];
+      const interfaceName = util.toInterfaceName(m.info.name, m._filename);
+      const ouputFile = util.toOutputFileName(modelName, m._isComponent, config.nested, interfaceName, m._filename)
+
+      return {
+        ...m,
+        interfaceName,
+        apiName: apiName.toLowerCase(),
+        modelName: modelName.toLowerCase(),
+        ouputFile
+      }
+    })
+
+  }
+
+  async run() {
+    return new Promise<number>((resolve, reject) => {
+
+      // Write index.ts
+      const outputFile = path.resolve(this.config.output, 'index.ts');
+
+      const output = this.strapiModels
+        .map(s => `export * from './${s.ouputFile.replace('\\', '/')}';`)
+        .sort()
+        .join('\n');
+      fs.writeFileSync(outputFile, output + '\n');
+
+      // Write each interfaces
+      let count = this.strapiModels.length;
+      this.strapiModels.forEach(g => {
+        const folder = path.resolve(this.config.output, g.ouputFile);
+        if (!fs.existsSync(path.dirname(folder))) fs.mkdirSync(path.dirname(folder));
+        fs.writeFile(`${folder}.ts`, this.strapiModelToInterface(g), { encoding: 'utf8' }, (err) => {
+          count--;
+          if (err) reject(err);
+          if (count === 0) resolve(this.strapiModels.length);
+        });
+      });
+    })
+  }
+
+  strapiModelToInterface(m: IStrapiModelExtended) {
+    const result: string[] = [];
+
+    result.push(...this.strapiModelExtractImports(m));
+    if (result.length > 0) result.push('')
+
+    result.push('/**');
+    result.push(` * Model definition for ${m.info.name}`);
+    result.push(' */');
+    result.push(`export interface ${m.interfaceName} {`);
+
+    if (m.modelName.includes(".")) {
+      result.push(`  __component: '${m.modelName}';`);
+    } else {
+      result.push(`  __contentType: '${m.modelName}';`);
+    }
+
+    result.push(`  ${this.strapiModelAttributeToProperty(m.interfaceName, 'id', {
+      type: 'string',
+      required: true
+    })}`);
+
+    if (m.attributes) {
+      for (const aName in m.attributes) {
+        if ((util.excludeField && util.excludeField(m.interfaceName, aName)) || !m.attributes.hasOwnProperty(aName)) continue;
+        result.push(`  ${this.strapiModelAttributeToProperty(m.interfaceName, aName, m.attributes[aName])}`);
+      }
+    }
+
+    if (util.addField) {
+      let addFields = util.addField(m.interfaceName);
+      if (addFields && Array.isArray(addFields)) for (let f of addFields) {
+        result.push(`  ${f.name}: ${f.type};`)
+      }
+    }
+
+    result.push('}');
+
+    if (this.config.enum) result.push('', ...this.strapiModelAttributeToEnum(m.interfaceName, m.attributes));
+
+    result.push('');
+    if (m.modelName.includes(".")) {
+      result.push(`export function is${m.interfaceName}(obj: { __component?: string }): obj is ${m.interfaceName} {`);
+      result.push(`  return obj.__component === '${m.modelName}';`);
+      result.push(`}`);
+    } else {
+      result.push(`export function is${m.interfaceName}(obj: { __contentType?: string }): obj is ${m.interfaceName} {`);
+      result.push(`  return obj.__contentType === '${m.modelName}';`);
+      result.push(`}`);
+    }
+
+    result.push('');
+
+    return result.join('\n');
   };
 
-  const imports: string[] = [];
-  if (m.attributes) {
-    for (const aName in m.attributes) {
-      if (!m.attributes.hasOwnProperty(aName)) {
-        continue;
+  /**
+   * Find all required models and import them.
+   *
+   * @param m Strapi model to examine
+   * @param structure Overall output structure
+   */
+  strapiModelExtractImports(m: IStrapiModelExtended) {
+    const toImportDefinition = (name: string) => {
+      const found = findModel(this.strapiModels, name);
+      const toFolder = (f: IStrapiModelExtended) => {
+        let rel = path.normalize(path.relative(path.dirname(m.ouputFile), path.dirname(f.ouputFile)));
+        rel = path.normalize(rel + path.sep + path.basename(f.ouputFile))
+        if (!rel.startsWith('..')) rel = '.' + path.sep + rel;
+        return rel.replace('\\', '/').replace('\\', '/');
       }
-      const a = componentCompatible(m.attributes[aName]);
+      return found ? `import ${(this.config.importAsType && this.config.importAsType(m.interfaceName) ? 'type ' : '')}{ ${found.interfaceName} } from '${toFolder(found)}';` : '';
+    };
 
-      const proposedImport = a.collection
-        ? toImportDefinition(a.collection)
-        : a.model && a.model !== 'file'
-          ? toImportDefinition(a.model)
-          : '';
-      if (proposedImport) {
-        imports.push(proposedImport);
+    const imports: string[] = [];
+    if (m.attributes) for (const aName in m.attributes) {
+
+      if (!m.attributes.hasOwnProperty(aName)) continue;
+
+      const a = m.attributes[aName];
+      if ((a.collection || a.model || a.component || '').toLowerCase() === m.modelName) continue;
+      if ((a.target || '').toLowerCase() === m.apiName) continue;
+
+      const proposedImport = toImportDefinition(a.collection || a.model || a.component || a.target || ((a.type === "media") && 'File') || '')
+      if (proposedImport) imports.push(proposedImport);
+
+      imports.push(...(a.components || [])
+        .filter(c => c !== m.modelName)
+        .map(toImportDefinition));
+    }
+
+    return imports
+      .filter((value, index, arr) => arr.indexOf(value) === index) // is unique
+      .sort((a, b) => a.split("from")[1] < b.split("from")[1] ? -1 : 1)
+  };
+
+  /**
+   * Convert a Strapi Attribute to a TypeScript property.
+   *
+   * @param interfaceName name of current interface
+   * @param name Name of the property
+   * @param a Attributes of the property
+   * @param structure Overall output structure
+   * @param enumm Use Enum type (or string literal types)
+   */
+  strapiModelAttributeToProperty(
+    interfaceName: string,
+    name: string,
+    a: IStrapiModelAttribute
+  ) {
+    const findModelName = (n: string) => {
+      let result = findModel(this.strapiModels, n);
+      //if (!result && n !== '*') console.debug(`type '${n}' unknown on ${interfaceName}[${name}] => fallback to 'any'. Add in the input arguments the folder that contains *.settings.json with info.name === '${n}'`)
+      return result ? result.interfaceName : 'any';
+    };
+
+    const isRequired = () => {
+      if (a.required) {
+        return a.required;
+      }
+
+      if (a.collection && this.config.collectionCanBeUndefined) {
+        return false;
+      } else if (a.collection) {
+        return true;
+      }
+
+      if (a.repeatable && this.config.collectionCanBeUndefined) {
+        return false;
+      } else if (a.repeatable) {
+        return true;
+      } else if (a.multiple && this.config.collectionCanBeUndefined) {
+        return false;
+      } else if (a.multiple) {
+        return true;
+      }
+
+      if (a.type === "dynamiczone" && a.min && a.min > 0) {
+        return true;
+      }
+
+      return false;
+    }
+
+    const required = isRequired() ? '' : '?';
+    let collection = a.collection || a.repeatable || a.multiple ? '[]' : '';
+
+    let propType = 'unknown';
+    if (a.collection) {
+      propType = findModelName(a.collection);
+    } else if (a.type === 'relation' && a.target && a.relation === 'oneToMany') {
+      collection = '[]';
+      propType = findModelName(a.target);
+    } else if (a.type === 'relation' && a.target) {
+      propType = findModelName(a.target);
+    } else if (a.type === 'relation' && a.relation === 'morphToMany') {
+      collection = '[]';
+      propType = 'unknown'
+    } else if (a.component) {
+      propType = findModelName(a.component);
+    } else if (a.model) {
+      propType = findModelName(a.model);
+    } else if (a.type === "dynamiczone") {
+
+      if (a.max === 1 && a.min === 1) {
+        propType = `[${a.components!.map(findModelName).join(" | ")}]`
+      } else if (a.max === 1 && !a.min) {
+        propType = `[${a.components!.map(findModelName).join(" | ")}]`
+      } else if (a.max === 2 && a.min === 2) {
+        propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
+      } else if (a.max === 3 && a.min === 3) {
+        propType = `[(${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")}), (${a.components!.map(findModelName).join(" | ")})]`
+      } else if (a.components!.length === 0) {
+        propType = `[]`
+      } else if (a.components!.length === 1) {
+        propType = `${a.components!.map(findModelName)[0]}[]`
+      } else if (a.components!.length >= 6 || a.components!.map(findModelName).join("").length > 80) {
+        propType = `(\n    | ${a.components!.map(findModelName).join("\n    | ")}\n  )[]`
+      } else {
+        propType = `(${a.components!.map(findModelName).join(" | ")})[]`
+      }
+
+    } else if (a.type) {
+      propType = util.toPropertyType(interfaceName, name, a, this.config.enum)
+    }
+
+    return `${util.toPropertyName(name, interfaceName)}${required}: ${propType}${collection};`;
+  };
+
+  /**
+   * Convert all Strapi Enum to TypeScript Enumeration.
+   *
+   * @param interfaceName name of current interface
+   * @param a Attributes
+   */
+  strapiModelAttributeToEnum(interfaceName: string, attributes: { [attr: string]: IStrapiModelAttribute }): string[] {
+    const enums: string[] = []
+    for (const aName in attributes) {
+      if (!attributes.hasOwnProperty(aName)) continue;
+      if (attributes[aName].type === 'enumeration') {
+        enums.push(`export enum ${util.toEnumName(aName, interfaceName)} {`);
+        attributes[aName].enum!.forEach(e => {
+          enums.push(`  ${e} = "${e}",`);
+        })
+        enums.push(`}\n`);
       }
     }
+    return enums
   }
-  if (imports.length === 0) {
-    return '';
-  }
-  return imports
-    .filter(isUnique)
-    .sort()
-    .join('\n');
-};
 
-const strapiModelToInterface = (m: IStrapiModel, structure: IStructure[], enumm: boolean) => {
-  const name = m.info.name;
-  const interfaceName = toInterfaceName(name);
-  const result: string[] = [];
-  const imports = strapiModelExtractImports(m, structure);
-  if (imports) {
-    result.push(imports + '\n');
-  }
-  result.push('/**');
-  result.push(` * Model definition for ${name}`);
-  result.push(' */');
-  result.push(`export interface ${interfaceName} {`);
-  result.push('  id: string;');
-  if (m.attributes) {
-    for (const aName in m.attributes) {
-      if (!m.attributes.hasOwnProperty(aName)) {
-        continue;
-      }
-      result.push(`  ${strapiModelAttributeToProperty(interfaceName, aName, m.attributes[aName], structure, enumm)}`);
-    }
-  }
-  result.push('}\n');
-  return enumm ? result.concat(strapiModelAttributeToEnum(interfaceName, m.attributes)).join('\n') : result.join('\n');
-};
-
-const writeIndex = (folder: string, structure: IStructure[]) => {
-  const outputFile = path.resolve(folder, 'index.ts');
-  const output = structure
-    .map((s) => (s.nested ? `export * from './${s.snakeName}/${s.snakeName}';` : `export * from './${s.snakeName}';`))
-    .join('\n');
-  fs.writeFileSync(outputFile, output + '\n');
-};
+}
 
 /**
  * Export a StrapiModel to a TypeScript interface
  */
-export const convert = (outputFolder: string, strapiModels: IStrapiModel[], nested = false, enumm = false) =>
-  new Promise<number>((resolve, reject) => {
-    let count = strapiModels.length;
-    if (!fs.existsSync(outputFolder)) {
-      fs.mkdirSync(outputFolder);
-    }
-    const structure = strapiModels.map((m) => {
-      const name = m.info.name;
-      const snakeName = toSnakeName(name);
-      const folder = nested ? path.resolve(outputFolder, snakeName) : outputFolder;
-      if (!fs.existsSync(folder)) {
-        fs.mkdirSync(folder);
-      }
-      return { name, folder, snakeName, m, nested };
-    });
-    writeIndex(outputFolder, structure);
-    structure.forEach((g) => {
-      const { folder, snakeName, m } = g;
-      const outputFile = path.resolve(folder, `${snakeName}.ts`);
-      fs.writeFile(outputFile, strapiModelToInterface(m, structure, enumm), { encoding: 'utf8' }, (err) => {
-        count--;
-        if (err) {
-          reject(err);
-        }
-        if (count === 0) {
-          resolve(strapiModels.length);
-        }
-      });
-    });
-  });
+export const convert = async (strapiModels: IStrapiModel[], config: IConfigOptions) => {
+  return new Converter(strapiModels, config).run()
+}

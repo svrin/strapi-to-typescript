@@ -1,0 +1,38 @@
+{
+  "collectionName": "components_content_complexs",
+  "info": {
+    "name": "complex",
+    "icon": "angle-right"
+  },
+  "options": {},
+  "attributes": {
+    "variant": {
+      "type": "enumeration",
+      "enum": [
+        "a",
+        "b"
+      ]
+    },
+    "key": {
+      "type": "string",
+      "regex": "\\w"
+    },
+    "single": {
+      "type": "component",
+      "repeatable": false,
+      "component": "content.complex"
+    },
+    "repeatable": {
+      "type": "component",
+      "repeatable": true,
+      "component": "content.complex"
+    },
+    "dynamic": {
+      "type": "dynamiczone",
+      "components": [
+        "content.complex",
+        "content.simple"
+      ]
+    }
+  }
+}
